@@ -16,15 +16,15 @@ def q_func(inpt, num_actions, scope, reuse=False):
         return out
 
 
-class Q_Policy:
-    def __init__(self, num_actions, num_obs, double_q=True, scope="deepq", reuse=None):
+class Q_Policy():
+    def __init__(self, num_actions, num_obs, double_q=True, scope="ddqn", reuse=None):
         self.num_actions = num_actions
         self.num_obs = num_obs
         self.scope = scope
         self.double_q = double_q
         self.reuse = reuse
         self.act_fn = self.build_act()
-        self.saver = tf.train.Saver(max_to_keep=5)
+        self.saver = tf.train.Saver(max_to_keep=10)
 
     def build_act(self, reuse=None):
         with tf.variable_scope(self.scope, reuse=reuse):

@@ -6,9 +6,9 @@ import tensorflow.contrib.layers as layers
 import common.tf_util as U
 
 from common import logger
-from agents import deepq
-from agents.deepq import ReplayBuffer
-from agents.deepq import ObservationInput
+from agents import ddqn
+from agents.ddqn import ReplayBuffer
+from agents.ddqn import ObservationInput
 from common.schedules import LinearSchedule
 
 
@@ -26,7 +26,7 @@ if __name__ == '__main__':
         # Create the environment
         env = gym.make("CartPole-v0")
         # Create all the functions necessary to train the model
-        act, train, update_target, debug = deepq.build_train(
+        act, train, update_target, debug = ddqn.build_train(
             make_obs_ph=lambda name: ObservationInput(env.observation_space, name=name),
             q_func=model,
             num_actions=env.action_space.n,

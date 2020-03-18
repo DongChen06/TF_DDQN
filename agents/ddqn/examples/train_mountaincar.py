@@ -1,13 +1,13 @@
 import gym
 
-from agents import deepq
+from agents import ddqn
 from common import models
 
 
 def main():
     env = gym.make("MountainCar-v0")
     # Enabling layer_norm here is import for parameter space noise!
-    act = deepq.learn(
+    act = ddqn.learn(
         env,
         network=models.mlp(num_hidden=64, num_layers=1),
         lr=1e-3,
