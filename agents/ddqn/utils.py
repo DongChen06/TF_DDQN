@@ -1,11 +1,20 @@
-from common.input import observation_input
-from common.tf_util import adjust_shape
+# from common.input import observation_input
+# from common.tf_util import adjust_shape
+import tensorflow as tf
+
+
+def huber_loss(x, delta=1.0):
+    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+    return tf.where(
+        tf.abs(x) < delta,
+        tf.square(x) * 0.5,
+        delta * (tf.abs(x) - 0.5 * delta)
+    )
+
 
 # ================================================================
 # Placeholders
 # ================================================================
-
-
 class TfInput(object):
     def __init__(self, name="(unnamed)"):
         """Generalized Tensorflow placeholder. The main differences are:
@@ -55,5 +64,3 @@ class ObservationInput(PlaceholderTfInput):
 
     def get(self):
         return self.processed_inpt
-
-

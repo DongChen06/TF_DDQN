@@ -1,10 +1,10 @@
-import numpy as np
 from utils import *
 from agents.ddqn.build_graph import Q_Policy
 from common.plot_func import plot
 from common import logger
 from agents.ddqn.replay_buffer import ReplayBuffer
 import datetime
+import numpy as np
 
 
 class Trainer():

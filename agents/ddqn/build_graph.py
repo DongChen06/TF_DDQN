@@ -1,9 +1,9 @@
 import tensorflow as tf
-import common.tf_util as U
 import numpy as np
 import tensorflow.contrib.layers as layers
 import os
 import logging
+from agents.ddqn.utils import huber_loss
 
 
 def q_func(inpt, num_actions, scope, reuse=False):
@@ -11,7 +11,7 @@ def q_func(inpt, num_actions, scope, reuse=False):
     with tf.variable_scope(scope, reuse=reuse):
         out = inpt
         out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.tanh)
-        # out = layers.fully_connected(out, num_outputs=64, activation_fn=tf.nn.tanh)
+        out = layers.fully_connected(out, num_outputs=32, activation_fn=tf.nn.tanh)
         out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
         return out
 
@@ -69,18 +69,8 @@ class Q_Policy():
 
             # compute the error (potentially clipped)
             td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-            loss = U.huber_loss(td_error)
+            loss = huber_loss(td_error)
             weighted_error = tf.reduce_mean(self.importance_weights_ph * loss)
-
-            # # compute optimization op (potentially with gradient clipping)
-            # if grad_norm_clipping is not None:
-            #     gradients = optimizer.compute_gradients(weighted_error, var_list=q_func_vars)
-            #     for i, (grad, var) in enumerate(gradients):
-            #         if grad is not None:
-            #             gradients[i] = (tf.clip_by_norm(grad, grad_norm_clipping), var)
-            #     self.optimize_expr = optimizer.apply_gradients(gradients)
-            # else:
-            #     self.optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
 
             if grad_norm_clipping is not None:
                 gradients = tf.gradients(weighted_error, q_func_vars)
