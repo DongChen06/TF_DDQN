@@ -35,77 +35,74 @@ class Q_Policy():
     def build_graph(self, optimizer, grad_norm_clipping=None, gamma=1.0):
         with tf.variable_scope(self.scope, reuse=None):
             # set up placeholders
-            obs_t_input = tf.placeholder(tf.float32, [None, self.num_obs])
-            act_t_ph = tf.placeholder(tf.int32, [None], name="action")
-            rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
-            obs_tp1_input = tf.placeholder(tf.float32, [None, self.num_obs])
-            done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
-            importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+            self.obs_t_input = tf.placeholder(tf.float32, [None, self.num_obs])
+            self.act_t_ph = tf.placeholder(tf.int32, [None], name="action")
+            self.rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
+            self.obs_tp1_input = tf.placeholder(tf.float32, [None, self.num_obs])
+            self.done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
+            self.importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
 
             # q network evaluation
-            q_t = q_func(obs_t_input, self.num_actions, scope="q_func", reuse=True)  # reuse parameters from act
+            q_t = q_func(self.obs_t_input, self.num_actions, scope="q_func", reuse=True)  # reuse parameters from act
             q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                             scope=tf.get_variable_scope().name + "/q_func")
 
             # target q network evaluation
-            q_tp1 = q_func(obs_tp1_input, self.num_actions, scope="target_q_func")
+            q_tp1 = q_func(self.obs_tp1_input, self.num_actions, scope="target_q_func")
             target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                                    scope=tf.get_variable_scope().name + "/target_q_func")
 
             # q scores for actions which we know were selected in the given state.
-            q_t_selected = tf.reduce_sum(q_t * tf.one_hot(act_t_ph, self.num_actions), 1)
+            q_t_selected = tf.reduce_sum(q_t * tf.one_hot(self.act_t_ph, self.num_actions), 1)
 
             # compute estimate of best possible value starting from state at t + 1
             if self.double_q:
-                q_tp1_using_online_net = q_func(obs_tp1_input, self.num_actions, scope="q_func", reuse=True)
+                q_tp1_using_online_net = q_func(self.obs_tp1_input, self.num_actions, scope="q_func", reuse=True)
                 q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
                 q_tp1_best = tf.reduce_sum(q_tp1 * tf.one_hot(q_tp1_best_using_online_net, self.num_actions), 1)
             else:
                 q_tp1_best = tf.reduce_max(q_tp1, 1)
-            q_tp1_best_masked = (1.0 - done_mask_ph) * q_tp1_best
+            q_tp1_best_masked = (1.0 - self.done_mask_ph) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rew_t_ph + gamma * q_tp1_best_masked
+            q_t_selected_target = self.rew_t_ph + gamma * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
             loss = U.huber_loss(td_error)
-            weighted_error = tf.reduce_mean(importance_weights_ph * loss)
+            weighted_error = tf.reduce_mean(self.importance_weights_ph * loss)
 
-            # compute optimization op (potentially with gradient clipping)
+            # # compute optimization op (potentially with gradient clipping)
+            # if grad_norm_clipping is not None:
+            #     gradients = optimizer.compute_gradients(weighted_error, var_list=q_func_vars)
+            #     for i, (grad, var) in enumerate(gradients):
+            #         if grad is not None:
+            #             gradients[i] = (tf.clip_by_norm(grad, grad_norm_clipping), var)
+            #     self.optimize_expr = optimizer.apply_gradients(gradients)
+            # else:
+            #     self.optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
+
             if grad_norm_clipping is not None:
-                gradients = optimizer.compute_gradients(weighted_error, var_list=q_func_vars)
-                for i, (grad, var) in enumerate(gradients):
-                    if grad is not None:
-                        gradients[i] = (tf.clip_by_norm(grad, grad_norm_clipping), var)
-                optimize_expr = optimizer.apply_gradients(gradients)
+                gradients = tf.gradients(weighted_error, q_func_vars)
+                grads, grad_norm = tf.clip_by_global_norm(gradients, grad_norm_clipping)
+                self.optimize_expr = optimizer.apply_gradients(list(zip(grads, q_func_vars)))
             else:
-                optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
+                self.optimize_expr = optimizer.minimize(weighted_error, var_list=q_func_vars)
 
             # update_target_fn will be called periodically to copy Q network to target Q network
-            update_target_expr = []
+            self.update_target_expr = []
             for var, var_target in zip(sorted(q_func_vars, key=lambda v: v.name),
                                        sorted(target_q_func_vars, key=lambda v: v.name)):
-                update_target_expr.append(var_target.assign(var))
-            update_target_expr = tf.group(*update_target_expr)
+                self.update_target_expr.append(var_target.assign(var))
+            self.update_target_expr = tf.group(*self.update_target_expr)
 
-            # Create callable functions
-            train = U.function(
-                inputs=[
-                    obs_t_input,
-                    act_t_ph,
-                    rew_t_ph,
-                    obs_tp1_input,
-                    done_mask_ph,
-                    importance_weights_ph
-                ],
-                outputs=td_error,
-                updates=[optimize_expr]
-            )
-            update_target = U.function([], [], updates=[update_target_expr])
-
-            q_values = U.function([obs_t_input], q_t)
-            return train, update_target, {'q_values': q_values}
+            # monitor training
+            summaries = []
+            summaries.append(tf.summary.scalar('train/%s_loss' % self.scope, weighted_error))
+            summaries.append(tf.summary.scalar('train/%s_q' % self.scope, tf.reduce_mean(q_t_selected)))
+            summaries.append(tf.summary.scalar('train/%s_tq' % self.scope, tf.reduce_mean(q_tp1)))
+            summaries.append(tf.summary.scalar('train/%s_gradnorm' % self.scope, grad_norm))
+            self.summary = tf.summary.merge(summaries)
 
     def forward(self, sess, obs, eps, mode='explore'):
         qs = sess.run(self.act_fn, {self.observations_ph: obs})
@@ -114,6 +111,25 @@ class Q_Policy():
         else:
             action = np.argmax(qs)
         return action
+
+    def backward(self, sess, obs, acts, next_obs, dones, rs, weights, global_step,
+                 summary_writer=None):
+        if summary_writer is None:
+            ops = self.optimize_expr
+        else:
+            ops = [self.summary, self.optimize_expr]
+        outs = sess.run(ops,
+                        {self.obs_t_input: obs,
+                         self.act_t_ph: acts,
+                         self.obs_tp1_input: next_obs,
+                         self.done_mask_ph: dones,
+                         self.rew_t_ph: rs,
+                         self.importance_weights_ph: weights})
+        if summary_writer is not None:
+            summary_writer.add_summary(outs[0], global_step=global_step)
+
+    def update_target(self, sess):
+        sess.run(self.update_target_expr)
 
     def save(self, sess, model_dir, global_step):
         self.saver.save(sess, model_dir + 'checkpoint', global_step=global_step)

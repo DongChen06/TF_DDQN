@@ -15,6 +15,8 @@ class Trainer():
         self.in_test = in_test
         self.dirs = dirs
         num_cpu = 8
+        self._init_summary()
+        self.summary_writer = tf.summary.FileWriter(dirs['log'])
 
         self.buffer_size = int(config.getfloat('MODEL_CONFIG', 'buffer_size'))
         self.batch_size = int(config.getfloat('MODEL_CONFIG', 'batch_size'))
@@ -51,21 +53,33 @@ class Trainer():
                                                            intra_op_parallelism_threads=num_cpu
                                                            ), make_default=True)
 
+    def _init_summary(self):
+        self.train_reward = tf.placeholder(tf.float32, [])
+        self.train_summary = tf.summary.scalar('train_reward', self.train_reward)
+        self.test_reward = tf.placeholder(tf.float32, [])
+        self.test_summary = tf.summary.scalar('test_reward', self.test_reward)
+
+    def _add_summary(self, reward, global_step, is_train=True):
+        if is_train:
+            summ = self.sess.run(self.train_summary, {self.train_reward: reward})
+        else:
+            summ = self.sess.run(self.test_summary, {self.test_reward: reward})
+        self.summary_writer.add_summary(summ, global_step=global_step)
+
     def run(self):
         policy = Q_Policy(num_actions=self.env.action_space.n, num_obs=self.env.observation_space.shape[0])
         # Create all the functions necessary to train the model
-        train, update_target, debug = policy.build_graph(
-            optimizer=tf.train.AdamOptimizer(learning_rate=self.lr_init),
-            gamma=self.gamma,
-            grad_norm_clipping=10
-        )
+        policy.build_graph(optimizer=tf.train.AdamOptimizer(learning_rate=self.lr_init),
+                           gamma=self.gamma,
+                           grad_norm_clipping=10
+                           )
 
         replay_buffer = ReplayBuffer(self.buffer_size)
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
         # if restore:
         #     policy.load(sess, dirs['model'], checkpoint=None)
-        update_target()
+        policy.update_target(self.sess)
 
         epoch_rewards = [0.0]
         eval_rewards = []
@@ -93,15 +107,16 @@ class Trainer():
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(self.batch_size)
                 weights, batch_idxes = np.ones_like(rewards), None
-                train(obses_t, actions, rewards, obses_tp1, dones, weights)
+                policy.backward(self.sess, obses_t, actions, obses_tp1, dones, rewards, weights, global_step=t,
+                                summary_writer=self.summary_writer)
 
             # Update target network periodically.
             if t > self.learning_starts and t % self.target_network_update_freq == 0:
-                update_target()
+                policy.update_target(self.sess)
 
             if done:
                 if self.print_freq is not None and len(epoch_rewards) % self.print_freq == 0:
-                    mean_100ep_reward = round(np.mean(epoch_rewards[-11:-1]), 1)
+                    mean_100ep_reward = round(np.mean(epoch_rewards[-99:-1]), 1)
                     num_episodes = len(epoch_rewards)
                     logger.record_tabular("steps", t)
                     logger.record_tabular("episodes", num_episodes)
@@ -125,7 +140,7 @@ class Trainer():
                         if self.reward_norm:
                             rew_eval = rew_eval / self.reward_norm
                         episode_reward_eval += rew_eval
-
+                    self._add_summary(episode_reward_eval, t, is_train=False)
                     print("evaluating reward = ", episode_reward_eval)
                     eval_rewards.append(episode_reward_eval)
 
@@ -138,8 +153,9 @@ class Trainer():
                     np.save(self.dirs['results'] + '{}'.format('ob_ls'), ob_ls)
 
                 obs = self.env.reset()
+                self._add_summary(epoch_rewards[-1], global_step=t)
+                self.summary_writer.flush()
                 epoch_rewards.append(0.0)
-
         print("Training Done...")
         self.env.close()
         plot(self.dirs['results'])

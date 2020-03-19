@@ -25,7 +25,7 @@ def parse_args():
     # parser.add_argument('--config-dir', type=str, required=False,
     #                     default=default_config_dir, help="experiment config dir")
     parser.add_argument('--is_training', type=str, required=False,
-                        default=False, help="True=train, False=evaluation")
+                        default=True, help="True=train, False=evaluation")
     parser.add_argument('--test-mode', type=str, required=False,
                         default='all_test',
                         help="test mode during training",
