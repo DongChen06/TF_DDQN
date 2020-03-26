@@ -9,7 +9,7 @@ This is a modified version of DDQN (Double Deep Q-network) of listed references 
 ### performance
 - CartPole-v0
 
-It takes about 10 hours to run 2e7 steps on computer with 2 GPU 2080 Ti, Intel i9-9820X CPU (10 Cores) and 128 GB Memory. The algorithm takes about 4.5 hours to converge.
+It takes about 10 minutes to run 1e5 steps on computer with 2 GPU 2080 Ti, Intel i9-9820X CPU (10 Cores) and 128 GB Memory. The algorithm takes about 2 minutes to converge.
 
 <p align="center">
      <img src="docs/ddqn_er.png" alt="output_example" width="60%" height="60%">
@@ -22,7 +22,7 @@ It takes about 10 hours to run 2e7 steps on computer with 2 GPU 2080 Ti, Intel i
 </p>
 
 You can also monitor the training process by type
-`tensorboard --logdir=experiments/experiment_breakout/summaries --host localhost --port 8088` (on windows). or `tensorboard --logdir=experiments/experiment_breakout/summaries` (on Linux).
+`tensorboard --logdir=Data/log/ --host localhost --port 8088` (on windows). or `tensorboard --logdir=Data/log/` (on Linux).
 
 <p align="center">
      <img src="docs/CartPole_tb.png" alt="output_example" width="60%" height="60%">
